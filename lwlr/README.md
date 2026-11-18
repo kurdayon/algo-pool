@@ -138,6 +138,18 @@ plus `get_params` / `set_params`, so it can be used with scikit-learn's
 
 Only NumPy is required.
 
+## Demo notebook
+
+`lwlr.ipynb` shows the model at work on a one-feature problem. It generates
+data from $y = c + k\,x + a\sin(x)$ plus noise (the range of $x$, the number of
+points and the noise level are settings you can change), then runs the model
+for every combination of a list of `alpha` values and a list of `rho` values,
+from the extremes to intermediate values. Each combination gets its own plot of
+the data against the model's predictions, and the predictions are made
+leave-one-out, so each point is predicted by a model that has not seen it. The
+notebook also tabulates the leave-one-out error of every combination. It needs
+Matplotlib in addition to NumPy; details are in the notebook itself.
+
 ## Things to know
 
 **Scale your features.** The weights come from Euclidean distance on the raw
@@ -175,4 +187,5 @@ the distance computations.
 ## Files
 
 - `lwlr.py` — the `LocallyWeightedRegressor` class.
+- `lwlr.ipynb` — demo notebook (one feature, all `alpha` × `rho` combinations, leave-one-out).
 - `README.md` — this file.
