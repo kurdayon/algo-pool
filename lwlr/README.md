@@ -58,8 +58,8 @@ where
 |---|---|
 | $A = [\mathbf{1}, X]$ | the training matrix with a column of ones added in front (the bias column) |
 | $x_{\text{aug}} = [1, x]$ | the query point with a leading $1$ |
-| $W(x) = \operatorname{diag}(w_1(x), \dots, w_n(x))$ | diagonal matrix of weights, $w_i(x) = \exp(-\alpha \lVert x_i - x\rVert)$, normalised so that $\sum_i w_i(x) = 1$ |
-| $D = \operatorname{diag}(0, 1, 1, \dots, 1)$ | the ridge penalty acts on the slopes only, never on the bias |
+| $W(x) = \mathrm{diag}(w_1(x), \dots, w_n(x))$ | diagonal matrix of weights, $w_i(x) = \exp(-\alpha \lVert x_i - x\rVert)$, normalised so that $\sum_i w_i(x) = 1$ |
+| $D = \mathrm{diag}(0, 1, 1, \dots, 1)$ | the ridge penalty acts on the slopes only, never on the bias |
 | $\lambda = \dfrac{\rho}{1 - \rho}$ | the ridge strength, running from $0$ (at $\rho = 0$) to $\infty$ (at $\rho = 1$) |
 
 The distance $\lVert x_i - x \rVert$ is the plain Euclidean distance between
