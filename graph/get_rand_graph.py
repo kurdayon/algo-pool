@@ -4,7 +4,7 @@ def get_rand_graph(n_inp, n_con, n_hid, n_out, funcs):
 	'''
 	Just run the script in the commad line to see an example of how it works!
 	Here we generate a random "graph" given as two lists and an integer.
-	The graph is executed by the code in "Graph.py" file.
+	The graph is executed by the code in "graph.py" file.
 
 	Arguments:
 		n_inp - number of input    nodes.
@@ -16,7 +16,7 @@ def get_rand_graph(n_inp, n_con, n_hid, n_out, funcs):
 	Output:
 		Triplet: "names", "graph", "n_consts" ("names" and "graph" are both lists of the same length).
 		names - is a list of the following form: ['h1', 'h2', 'h3', 'o1', 'o2']
-		graph - a list of nodes. Each node has the following structure: ['plus', 'h2', 'x1'] or ['mul', 'c1', 'x5']
+		graph - a list of nodes. Each node has the following structure: ['add', 'h2', 'x1'] or ['mul', 'c1', 'x5']
 			We can say that that the elements of the "names" list specify the output node
 			and the "graph" list specify the operation and input nodes.
 		n_consts - number of constants used by function.
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 	n_con = 4
 	n_hid = 7
 	n_out = 2
-	funcs = [('plus',2), ('mul',2), ('exp', 1), ('log', 1)]
+	funcs = [('add',2), ('mul',2), ('exp', 1), ('log', 1)]
 	names, graph, n_const = get_rand_graph(n_inp, n_con, n_hid, n_out, funcs)
 	print('names =', names)
 	print('graph = ', graph)
