@@ -2,13 +2,14 @@
 
 Small tools for working with math functions written as graphs (DAGs, directed acyclic graphs).
 
-There are three scripts:
+There are four scripts:
 
 - `graph.py` has the `Graph` class. It takes a graph, computes its values for given inputs, and can run backpropagation to get gradients. It can also run the same graph step by step over a sequence, like a recurrent network.
 - `get_rand_graph.py` has the `get_rand_graph` function. It builds a random graph in the format that `Graph` understands.
 - `mutate_graph.py` has the `mutate_graph` function. It takes a graph and returns a slightly changed (mutated) graph that is still valid.
+- `smooth_graph.py` has the `SmoothGraph` class. It is a "smooth" version of a graph, where the choice of function and the choice of arguments are numbers (parameters) instead of fixed picks.
 
-The only dependency is `numpy` (needed by `graph.py`).
+The only dependency is `numpy` (needed by `graph.py` and `smooth_graph.py`).
 
 ## How a graph is defined
 
@@ -198,6 +199,7 @@ Arguments:
 - `n_hid` - number of hidden nodes (`h1, h2, ...`).
 - `n_out` - number of outputs (`o1, o2, ...`).
 - `funcs` - the functions to choose from. Use names that `Graph` knows (see the table).
+- `use_all_input` (optional, default `False`) - if `True`, every input (`x1 ... x<n_inp>`) is used by at least one node.
 
 What you can rely on:
 
@@ -205,9 +207,35 @@ What you can rely on:
 - Every hidden node is used by a later hidden node or by an output.
 - No node is computed from constants only, so every node depends on at least one input.
 - `n_consts` tells how many constants the graph really uses. It can be smaller than `n_con`. The used constants are always named `c1 ... c<n_consts>`, so you know exactly which values to provide.
-- It is not guaranteed that every input is used.
+- With the default `use_all_input=False` it is not guaranteed that every input is used. With `use_all_input=True` it is.
 
 Running `python get_rand_graph.py` prints one example graph.
+
+### How a random graph is generated
+
+Think of the nodes as written in one row from left to right: first the hidden nodes `h1, h2, ...`, then the outputs `o1, o2, ...`. Inputs and constants are on the left of everything. A node may only use what is on the left of it.
+
+1. **Choose the functions.** Every hidden node and every output gets a random function from `funcs`. This fixes how many arguments each node has. All arguments are still empty.
+
+2. **Go from right to left over the hidden nodes and make sure each one is used.** We start with the last hidden node and end with `h1`. For each hidden node we pick a random empty argument of some node on the right of it (a later hidden node or an output) and put the hidden node there. After this step the output of every hidden node is used as an input of some node on the right.
+
+3. **Only with `use_all_input=True`: make sure each input is used.** Each input `x1, x2, ...` is put into a random argument that is still empty. An input can go to any node, because inputs are on the left of all nodes.
+
+4. **Fill the remaining arguments.** We loop over the arguments that are still empty. For each one we choose at random among everything that is on the left of the node: an input, a constant, or an earlier hidden node. (For an output, all hidden nodes are on the left.)
+
+5. **Rename the constants.** See below.
+
+**No node uses only constants.** In step 4, when the last empty argument of a node is filled and all its other arguments are constants, the choice is made only among inputs and earlier hidden nodes. So every node gets at least one argument that is an input or a hidden node. Since every hidden node follows the same rule, every node depends, directly or through other nodes, on at least one input.
+
+**The number of constants.** `n_con` is the largest number of constants that may be used. It is not guaranteed that all of them are used. First, the arguments are chosen at random, so some constants may simply never be picked. Second, there may be too few free arguments for all of them. This is why the function returns `n_consts`, the number of constants that are really used. At the end the used constants are renamed to `c1, c2, ...`, so the numbering starts from 1 and has no gaps. For example, if only `c1` and `c3` were picked, `c3` becomes `c2` and `n_consts` is 2.
+
+**Enough arguments for `use_all_input=True`.** Every hidden node and every input needs its own argument (steps 2 and 3). If the functions chosen in step 1 have too few arguments in total, step 1 is repeated. If it is impossible even when every node gets the function with the most arguments, a `ValueError` is raised. For example, one node with one argument cannot use five inputs.
+
+Other details:
+
+- The same node can be used several times, also twice by the same node, for example `['mul', 'x2', 'x2']`.
+- Outputs are never used as arguments of other nodes.
+- "Depends on an input" is about the connections only. A node like `['subtract', 'h1', 'h1']` is connected to the inputs, but its value is always zero.
 
 ## Using `mutate_graph`
 
@@ -260,6 +288,100 @@ Because nodes are renamed, a node can have a different name after the mutation (
 If no mutation of the allowed kinds is possible, a `ValueError` is raised. For example, `kinds=['remove_node']` fails on a graph without hidden nodes. With `kinds=['change_op', 'change_arg']` the number of nodes stays fixed.
 
 Running `python mutate_graph.py` shows a few mutations in a row and then runs a stress test (30000 mutations, each result is checked).
+
+## Using `SmoothGraph`
+
+In a usual graph each node is one fixed function, and each argument is one fixed earlier node. In a smooth graph both choices are replaced by numbers:
+
+- **Each node is a weighted average of all functions:** `node = w1*f1(...) + w2*f2(...) + w3*f3(...) + ...`. The weights of a node are positive and sum to 1. They are the softmax of scores.
+- **Each argument is a linear combination of all visible nodes:** `arg = c + k1*n1 + k2*n2 + ...`. Every argument of every function of every node has its own `k`s and its own `c`.
+
+There are no constant nodes (`c1, c2, ...`). The `c` in the linear combination takes their role.
+
+```python
+import numpy as np
+from smooth_graph import SmoothGraph
+
+g = SmoothGraph(n_inp=2, n_hid=3, n_out=1, funcs=['add', 'mul', 'exp'])
+
+values = g.get_node2val({'x1': np.array([0.1, 0.2]), 'x2': np.array([1.0, 2.0])})
+values['o1']
+```
+
+Arguments of `SmoothGraph`:
+
+- `n_inp`, `n_hid`, `n_out` - number of inputs, hidden nodes and outputs.
+- `funcs` - the functions to use, from the table above. Names (`['add', 'mul']`) or the pairs used by `get_rand_graph` (`[('add', 2), ('mul', 2)]`) both work. You do not have to use all functions.
+- `sigma` (optional, default 1.0) - all parameters start as random numbers from a Gaussian distribution with this standard deviation.
+- `seed` (optional) - give a number to get the same starting parameters again.
+
+`get_node2val` works like in `Graph`: it takes a dictionary with the input values (numbers or numpy arrays) and adds the values of all hidden and output nodes to it. It returns only this dictionary. There are no gradients yet.
+
+### Order of the nodes
+
+Think of the nodes written one above the other:
+
+```
+output nodes     o1, o2, ...        (top)
+hidden nodes     ..., h3, h2, h1
+input nodes      ..., x3, x2, x1
+constant node    always 1.0         (bottom)
+```
+
+A hidden node sees everything below it. An output node sees all hidden nodes, all inputs and the constant node, but not other outputs.
+
+### Parameters
+
+All parameters are read by name with `g[...]`:
+
+| Name | Shape | What it is |
+|---|---|---|
+| `g['z']` | nodes x functions | Scores. One row per hidden and output node (hidden first, as in `g.names`), one column per function (in the order of `funcs`). |
+| `g['w']` | nodes x functions | Weights, the softmax of each row of `z`. Each row sums to 1. Computed from `z`, cannot be set. |
+| `g['h1']`, `g['h2']`, ..., `g['o1']`, ... | visible nodes x arguments | One matrix per hidden and output node. |
+
+A node matrix has:
+
+- **One column per argument,** for all functions together. For `funcs=['add', 'mul', 'exp']` there are 2 + 2 + 1 = 5 columns: `add` uses columns 0 and 1, `mul` uses 2 and 3, `exp` uses 4. `g.get_col_names()` returns `['add:1', 'add:2', 'mul:1', 'mul:2', 'exp:1']`.
+- **One row per visible node,** from top to bottom: the earlier hidden nodes (nearest first), then the inputs (`x1` last), then the constant row. For `h3` with two inputs the rows are `h2, h1, x2, x1, 1`. For `o1` with three hidden nodes they are `h3, h2, h1, x2, x1, 1`. `g.get_row_names('h3')` returns these names.
+
+So the entry in row `h1`, column `mul:2` of `g['h3']` says how strongly `h1` enters the second argument of `mul` in node `h3`. The last row holds the `c` of each argument.
+
+Parameters can be changed in place (`g['h2'][0, 1] = 0.5`) or replaced (`g['z'] = new_matrix`, the shape must fit).
+
+### Invalid values
+
+All functions of a node are always computed, also those with a weight near zero. If a function returns `nan` or `inf` (for example `log(0)` or `1/0`), that value is replaced by 0.0 before the weighted average is taken. Numpy warnings are switched off inside `get_node2val`.
+
+With random parameters the values can still become very large (but finite), mostly because of `exp` and `power`. A smaller `sigma` or a smaller set of functions helps.
+
+### Reproducing a usual graph
+
+`set_graph` sets all parameters so that the model computes the same as a usual graph:
+
+```python
+from get_rand_graph import get_rand_graph
+
+funcs = [('add', 2), ('mul', 2), ('exp', 1)]
+names, graph, n_consts = get_rand_graph(n_inp=2, n_con=3, n_hid=3, n_out=1, funcs=funcs)
+
+g = SmoothGraph(n_inp=2, n_hid=3, n_out=1, funcs=funcs)
+g.set_graph(names, graph, consts={'c1': 0.5, 'c2': -2.0, 'c3': 1.0})
+```
+
+- The graph must have the same number of hidden and output nodes as the model and use only functions of the model.
+- `consts` gives a value for every constant used in the graph (`n_consts` of them). They are needed because the smooth graph has no constant nodes: the value goes into the constant row.
+
+What is set for each node:
+
+- In `z`, the function of the node gets the score 50 and all other functions get 0.
+- In the node matrix everything is 0, except: an argument that is an input or hidden node gets a 1.0 in the row of that node, and an argument that is a constant gets its value in the last row.
+
+With a score of 50 the weight of the right function is 1 up to about 1e-22, so the other functions still add a tiny amount. In almost all cases you will not see a difference. It matters only if a node sits exactly at a jump of a later function. For example `subtract(x, x)` is exactly 0 in the usual graph and about 1e-22 here, and `power(h, h)` gives 0 for the first and 1 for the second. In a test with 2933 random graphs this happened 6 times.
+
+If you need an exact copy, use `g.set_graph(names, graph, consts, score=np.inf)`. Then the other functions get the score `-inf` and the weights are exactly 1 and 0. In the same test all 2933 graphs were reproduced without any difference. The price is that such scores cannot be changed in small steps afterwards.
+
+Running `python smooth_graph.py` shows a random model and a comparison of a usual graph with its smooth copy.
 
 ## Python version
 
